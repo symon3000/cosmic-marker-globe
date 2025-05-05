@@ -44,28 +44,33 @@ export function Globe({
   let phi = 0
   let width = 0
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const pointerInteracting = useRef(null)
+  const pointerInteracting = useRef<number | null>(null)
   const pointerInteractionMovement = useRef(0)
   const [r, setR] = useState(0)
+  const lastX = useRef(0)
 
-  const updatePointerInteraction = (value: any) => {
-    pointerInteracting.current = value
+  const updatePointerInteraction = (clientX: number | null) => {
+    pointerInteracting.current = clientX
     if (canvasRef.current) {
-      canvasRef.current.style.cursor = value ? "grabbing" : "grab"
+      canvasRef.current.style.cursor = clientX !== null ? "grabbing" : "grab"
     }
   }
 
-  const updateMovement = (clientX: any) => {
+  const updateMovement = (clientX: number) => {
     if (pointerInteracting.current !== null) {
       const delta = clientX - pointerInteracting.current
       pointerInteractionMovement.current = delta
+      lastX.current = clientX
       setR(delta / 200)
     }
   }
 
   const onRender = useCallback(
     (state: Record<string, any>) => {
-      if (!pointerInteracting.current) phi += 0.005
+      if (pointerInteracting.current === null) {
+        // Auto rotation when not being dragged
+        phi += 0.005
+      }
       state.phi = phi + r
       state.width = width * 2
       state.height = width * 2
@@ -90,8 +95,16 @@ export function Globe({
       onRender,
     })
 
-    setTimeout(() => (canvasRef.current!.style.opacity = "1"))
-    return () => globe.destroy()
+    setTimeout(() => {
+      if (canvasRef.current) {
+        canvasRef.current.style.opacity = "1"
+      }
+    })
+
+    return () => {
+      window.removeEventListener("resize", onResize)
+      globe.destroy()
+    }
   }, [])
 
   return (
@@ -103,20 +116,29 @@ export function Globe({
     >
       <canvas
         className={cn(
-          "size-full opacity-0 transition-opacity duration-500 [contain:layout_paint_size]",
+          "size-full opacity-0 transition-opacity duration-500 [contain:layout_paint_size] cursor-grab"
         )}
         ref={canvasRef}
-        onPointerDown={(e) =>
-          updatePointerInteraction(
-            e.clientX - pointerInteractionMovement.current,
-          )
-        }
+        onPointerDown={(e) => {
+          updatePointerInteraction(e.clientX)
+          lastX.current = e.clientX
+        }}
         onPointerUp={() => updatePointerInteraction(null)}
         onPointerOut={() => updatePointerInteraction(null)}
-        onMouseMove={(e) => updateMovement(e.clientX)}
-        onTouchMove={(e) =>
-          e.touches[0] && updateMovement(e.touches[0].clientX)
-        }
+        onMouseMove={(e) => {
+          if (pointerInteracting.current !== null) {
+            const delta = e.clientX - lastX.current
+            phi += delta / 200
+            lastX.current = e.clientX
+          }
+        }}
+        onTouchMove={(e) => {
+          if (e.touches[0] && pointerInteracting.current !== null) {
+            const delta = e.touches[0].clientX - lastX.current
+            phi += delta / 200
+            lastX.current = e.touches[0].clientX
+          }
+        }}
       />
     </div>
   )
